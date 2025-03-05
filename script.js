@@ -10,9 +10,22 @@ const firebaseConfig = {
 };
 
 // Inicializa o Firebase (usando a sintaxe compatível)
-firebase.initializeApp(firebaseConfig);
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
 const auth = firebase.auth();
 const db = firebase.firestore();
+
+// Função para criptografar dados
+function encryptData(data, secretKey) {
+    return CryptoJS.AES.encrypt(data, secretKey).toString();
+}
+
+// Função para descriptografar dados
+function decryptData(encryptedData, secretKey) {
+    const bytes = CryptoJS.AES.decrypt(encryptedData, secretKey);
+    return bytes.toString(CryptoJS.enc.Utf8);
+}
 
 // Função para alternar entre o formulário de login e cadastro
 document.getElementById('showRegisterForm').addEventListener('click', (e) => {
@@ -30,12 +43,27 @@ document.getElementById('showLoginForm').addEventListener('click', (e) => {
 // Login
 document.getElementById('loginForm').addEventListener('submit', (e) => {
     e.preventDefault();
-    const email = document.getElementById('email').value;
+    const username = document.getElementById('username').value;
     const password = document.getElementById('password').value;
 
-    auth.signInWithEmailAndPassword(email, password)
-        .then((userCredential) => {
-            window.location.href = 'logado.html'; // Redireciona para a página logada
+    // Verifica o usuário no Firestore
+    db.collection('users').where('username', '==', username).get()
+        .then((querySnapshot) => {
+            if (querySnapshot.empty) {
+                alert('Usuário não encontrado.');
+                return;
+            }
+
+            const userDoc = querySnapshot.docs[0];
+            const userData = userDoc.data();
+            const decryptedPassword = decryptData(userData.password, username);
+
+            if (decryptedPassword === password) {
+                // Redireciona para a página logada
+                window.location.href = 'logado.html';
+            } else {
+                alert('Senha incorreta.');
+            }
         })
         .catch((error) => {
             alert('Erro ao fazer login: ' + error.message);
@@ -45,62 +73,83 @@ document.getElementById('loginForm').addEventListener('submit', (e) => {
 // Cadastro
 document.getElementById('registerForm').addEventListener('submit', (e) => {
     e.preventDefault();
-    const email = document.getElementById('registerEmail').value;
+    const username = document.getElementById('registerUsername').value;
     const password = document.getElementById('registerPassword').value;
 
-    auth.createUserWithEmailAndPassword(email, password)
-        .then((userCredential) => {
-            alert('Usuário cadastrado com sucesso! Faça login para continuar.');
-            document.getElementById('registerFormContainer').style.display = 'none';
-            document.getElementById('loginForm').style.display = 'block';
+    // Verifica se o usuário já existe
+    db.collection('users').where('username', '==', username).get()
+        .then((querySnapshot) => {
+            if (!querySnapshot.empty) {
+                alert('Nome de usuário já existe.');
+                return;
+            }
+
+            // Criptografa a senha antes de salvar
+            const encryptedPassword = encryptData(password, username);
+
+            // Salva o usuário no Firestore
+            db.collection('users').add({
+                username: username,
+                password: encryptedPassword
+            })
+            .then(() => {
+                alert('Usuário cadastrado com sucesso! Faça login para continuar.');
+                document.getElementById('registerFormContainer').style.display = 'none';
+                document.getElementById('loginForm').style.display = 'block';
+            })
+            .catch((error) => {
+                alert('Erro ao cadastrar: ' + error.message);
+            });
         })
         .catch((error) => {
-            alert('Erro ao cadastrar: ' + error.message);
+            alert('Erro ao verificar usuário: ' + error.message);
         });
 });
 
 // Logout
-document.getElementById('logoutButton').addEventListener('click', () => {
-    auth.signOut().then(() => {
+if (document.getElementById('logoutButton')) {
+    document.getElementById('logoutButton').addEventListener('click', () => {
         window.location.href = 'index.html';
     });
-});
+}
 
-// Adicionar Transação
-document.getElementById('transactionForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const description = document.getElementById('description').value;
-    const amount = document.getElementById('amount').value;
-    const secretKey = auth.currentUser.uid; // Usando o UID do usuário como chave secreta
+// Adicionar Transação (na página logado.html)
+if (document.getElementById('transactionForm')) {
+    document.getElementById('transactionForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const description = document.getElementById('description').value;
+        const amount = document.getElementById('amount').value;
+        const secretKey = document.getElementById('username').value; // Usando o nome de usuário como chave secreta
 
-    const encryptedDescription = CryptoJS.AES.encrypt(description, secretKey).toString();
-    const encryptedAmount = CryptoJS.AES.encrypt(amount, secretKey).toString();
+        const encryptedDescription = encryptData(description, secretKey);
+        const encryptedAmount = encryptData(amount, secretKey);
 
-    db.collection('transactions').add({
-        userId: auth.currentUser.uid,
-        description: encryptedDescription,
-        amount: encryptedAmount,
-        date: new Date()
-    }).then(() => {
-        alert('Transação adicionada com sucesso!');
-        loadTransactions();
-    }).catch((error) => {
-        alert('Erro ao adicionar transação: ' + error.message);
+        db.collection('transactions').add({
+            username: secretKey,
+            description: encryptedDescription,
+            amount: encryptedAmount,
+            date: new Date()
+        }).then(() => {
+            alert('Transação adicionada com sucesso!');
+            loadTransactions();
+        }).catch((error) => {
+            alert('Erro ao adicionar transação: ' + error.message);
+        });
     });
-});
+}
 
-// Carregar Transações
+// Carregar Transações (na página logado.html)
 function loadTransactions() {
     const transactionList = document.getElementById('transactionList');
     transactionList.innerHTML = '';
-    const secretKey = auth.currentUser.uid;
+    const secretKey = document.getElementById('username').value;
 
-    db.collection('transactions').where('userId', '==', auth.currentUser.uid).get()
+    db.collection('transactions').where('username', '==', secretKey).get()
         .then((querySnapshot) => {
             querySnapshot.forEach((doc) => {
                 const data = doc.data();
-                const description = CryptoJS.AES.decrypt(data.description, secretKey).toString(CryptoJS.enc.Utf8);
-                const amount = CryptoJS.AES.decrypt(data.amount, secretKey).toString(CryptoJS.enc.Utf8);
+                const description = decryptData(data.description, secretKey);
+                const amount = decryptData(data.amount, secretKey);
 
                 const li = document.createElement('li');
                 li.textContent = `${description}: R$ ${amount}`;
@@ -113,10 +162,9 @@ function loadTransactions() {
 }
 
 // Verifica se o usuário está logado
-auth.onAuthStateChanged((user) => {
-    if (user && window.location.pathname.endsWith('logado.html')) {
-        loadTransactions();
-    } else if (!user && !window.location.pathname.endsWith('index.html')) {
-        window.location.href = 'index.html';
-    }
-});
+const username = localStorage.getItem('username');
+if (username && window.location.pathname.endsWith('logado.html')) {
+    loadTransactions();
+} else if (!username && !window.location.pathname.endsWith('index.html')) {
+    window.location.href = 'index.html';
+}
