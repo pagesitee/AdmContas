@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Sistema Financeiro</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Bem-vindo ao Sistema Financeiro</h1>
+        <button id="logoutButton">Sair</button>
+        <h2>Transações</h2>
+        <form id="transactionForm">
+            <input type="text" id="description" placeholder="Descrição" required>
+            <input type="number" id="amount" placeholder="Valor" required>
+            <button type="submit">Adicionar Transação</button>
+        </form>
+        <ul id="transactionList"></ul>
+    </div>
+
+    <!-- Firebase (versão compatível) -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <!-- CryptoJS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <!-- Script principal -->
+    <script src="script.js"></script>
+</body>
+</html>
